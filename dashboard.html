@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Tabitha's — Staff Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --gold:   #C8860A; --amber:  #E6A020; --dark:   #0E0900;
+    --card:   #1A1206; --border: #2A1E08; --cream:  #F5EDD8; --muted:  #7A6040;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--dark); color:var(--cream); font-family:'DM Sans',sans-serif; min-height:100vh; padding-bottom:32px; }
+  .login-screen { min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:32px 24px; text-align:center; }
+  .pin-input { width:100%; max-width:260px; background:var(--card); border:1px solid var(--border); color:var(--cream); font-size:28px; letter-spacing:0.3em; padding:16px; text-align:center; outline:none; margin-bottom:16px; }
+  .pin-btn { width:100%; max-width:260px; background:var(--gold); color:var(--dark); border:none; font-size:15px; font-weight:800; padding:16px; cursor:pointer; text-transform:uppercase; }
+  .main-header { background:linear-gradient(180deg,#1a0f00 0%,var(--dark) 100%); padding:20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+  .orders-list { padding:16px; }
+  .order-card { background:var(--card); border:1px solid var(--border); border-radius:3px; margin-bottom:12px; padding:14px; }
+  .order-card.status-pending { border-left:4px solid var(--amber); }
+  .action-btn { background:rgba(200,134,10,0.15); border:1px solid var(--gold); color:var(--gold); padding:8px 14px; font-size:11px; font-weight:800; cursor:pointer; margin-top: 10px; }
+  @media print {
+    body * { visibility: hidden; }
+    #print-area, #print-area * { visibility: visible; }
+    #print-area { position: absolute; left: 0; top: 0; width: 80mm; font-family: monospace; font-size: 12px; color: #000; }
+  }
+</style>
+</head>
+<body>
+
+<div id="print-area" style="display:none;"></div>
+
+<div id="login-screen" class="login-screen">
+  <div style="font-size:56px; margin-bottom:16px;">🔐</div>
+  <h2 style="font-family:'Playfair Display',serif; margin-bottom:6px;">Kitchen Control Centre</h2>
+  <p style="font-size:13px; color:var(--muted); margin-bottom:32px;">Enter Staff PIN (2018)</p>
+  <input class="pin-input" type="password" id="pin-input" maxlength="4" placeholder="••••" oninput="if(this.value.length===4) doLogin()">
+  <button class="pin-btn" onclick="doLogin()">Enter</button>
+</div>
+
+<div id="main-app" style="display:none;">
+  <div class="main-header">
+    <div>
+      <h2 style="font-family:'Playfair Display',serif; font-size:18px;">📊 Kitchen Dashboard</h2>
+    </div>
+    <button onclick="location.reload()" style="background:none; border:1px solid var(--border); color:var(--muted); padding:6px 12px; cursor:pointer;">Lock</button>
+  </div>
+  <div class="orders-list" id="orders-list"></div>
+</div>
+
+<script>
+const API_URL = 'https://script.google.com/macros/s/AKfycbwzB2lDGwBGb8oC_C3_WDH9JPFdOsQl-g3pYdlWIrQIqfXcJCAy-fmsrB3OLv5zV6fuQw/exec';
+let staffPin = '';
+
+function doLogin() {
+  const pin = document.getElementById('pin-input').value.trim();
+  if (!pin) return;
+  staffPin = pin;
+  fetch(`${API_URL}?action=dashboard&pin=${pin}`).then(r => r.json()).then(data => {
+    if (data.success) {
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('main-app').style.display = 'block';
+      renderOrders(data.orders);
+      setInterval(loadOrders, 10000); // 10s fast KDS polling
+    } else {
+      alert('Invalid PIN');
+    }
+  });
+}
+
+async function loadOrders() {
+  const res = await fetch(`${API_URL}?action=dashboard&pin=${staffPin}`);
+  const data = await res.json();
+  if (data.success) renderOrders(data.orders);
+}
+
+function renderOrders(orders) {
+  const list = document.getElementById('orders-list');
+  if (!orders.length) { list.innerHTML = '<p style="color:var(--muted)">No orders today.</p>'; return; }
+  list.innerHTML = orders.map(o => `
+    <div class="order-card status-${o.status.toLowerCase()}">
+      <div style="display:flex; justify-content:space-between; font-weight:700; color:var(--gold);">
+        <span>${o.orderId}</span><span>GHS ${o.total}</span>
+      </div>
+      <div style="font-size:14px; margin: 6px 0;">${o.name} (${o.phone}) — <b>${o.status}</b></div>
+      <div style="font-size:12px; color:var(--muted);">${o.items.map(i => `${i.qty}×${i.name}`).join(', ')}</div>
+      ${o.status === 'PENDING' ? `<button class="action-btn" onclick="updateStatus('${o.orderId}','CONFIRMED')">✓ Confirm Payment & Order</button>` : ''}
+    </div>
+  `).join('');
+}
+
+async function updateStatus(orderId, status) {
+  await fetch(`${API_URL}?action=update_status&pin=${staffPin}&orderId=${orderId}&status=${status}`);
+  loadOrders();
+}
+</script>
+</body>
+</html>
